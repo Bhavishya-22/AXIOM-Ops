@@ -187,35 +187,71 @@ The shared contracts in `shared/` were preserved without modification. Frontend 
 - **LLM Integration**: Live external LLM calls use `executeLlmDiagnosis` which falls back to the deterministic explanation engine if `LLM_API_KEY` is unset or default. The deterministic explanation generates valid JSON conforming 100% to the Section 6 validity matrix and Section 11 server validation rules.
 - **Remediation Execution Engine (Section 12)**: Part A Remediation state machine (`pending -> apply_sent -> apply_confirmed -> verifying -> finished`) and the 5 scenario multi-poll verifiers will be connected in Block 4/5.
 - **Shared Contracts**: `shared/` contracts were preserved without modification.
+---
+
+## 5. Phase 1: Remediation and Execution Guard (Items 1–8) — DONE
+- **Item 1: Demo Token Authentication & Approver Roles**:
+  - `backend/src/auth/demo-auth.ts`: Operator & SME tokens verified against stored `DemoUser` table. Caller-supplied roles ignored; server strictly derives role.
+- **Item 2: Shared Execution Guard**:
+  - `backend/src/policy/execution-guard.ts`: `buildExecutionContext` constructs context strictly from database rows. Calculates `effectiveImpactServices` from cited evidence nodes. Enforces fail-closed rules, regulated service hold (`regulatedHold: true`) for both L1 and L2, and separate L2 and L1 prerequisites.
+- **Item 3: POST /investigations/:id/approve & Partial Unique Index**:
+  - `backend/src/routes/investigations.ts`: Enforces `idempotencyKey`, partial unique index `one_active_remediation` via Prisma migration, returns existing run on duplicate, returns 409 for unlinked tickets, outdated investigations, Weak evidence level, material clusters, or regulated holds. Audited with `remediation_approval_rejected`.
+- **Item 4: Execution State Machine & Startup Reconciliation**:
+  - `backend/src/remediation/executor.ts`: State machine (`pending` -> `apply_sent` -> `apply_confirmed` -> `verifying` -> `finished`). Startup reconciliation per Section 12 table.
+- **Item 5: Verifier Engine & Simulator Endpoints**:
+  - `backend/src/verify/verifier.ts` & `thresholds.ts`: Counter deltas from apply snapshot, 3s polling up to 30s, documented absolute floors, inconclusive on thin baseline/traffic. Gateway status-before-retry verification and zero duplicate charges. IdP negative token probe returning 401. Simulator endpoints mounted.
+- **Item 6: Incident/Ticket Resolution & Attempt Cap**:
+  - Resolves incident and linked tickets only on `resolved`. Maximum 1 retry attempt before escalation.
+- **Item 7: Regulated Service Invariant (`idp_down_regulated`)**:
+  - Held by execution guard; writes `change_control_required` audit event; 0 calls reach simulator fix.
+- **Item 8: GET /remediations/:id**:
+  - Returns run details, checkpoints, verification outcome, and live status.
 
 ---
 
-## 5. How to Run
-
-### Run Test Suite
-```bash
-npm test
-```
-Runs all 106 unit, integration, invariant, and acceptance tests across workspaces.
-
-### Run Simulator
-```bash
-npm run dev --workspace=@axiomops/simulator
-# Or from simulator/
-cd simulator && npm run dev
-```
-Simulator listens on port 4000.
-
-### Run Backend
-```bash
-npm run dev --workspace=@axiomops/backend
-# Or from backend/
-cd backend && npm run dev
-```
-Backend listens on port 3000. Mode A detector starts automatically.
+## 6. Phase 2: L1 Ticket Handling & Seed Runbooks (Items 9–11) — DONE
+- **Item 9: Classifier, Triage & Seed Runbooks**:
+  - `backend/src/l1/classifier.ts`: Keyword & intent matcher.
+  - `backend/src/l1/runbooks.ts`: 7 seed runbooks (3 how-tos, 1 access request, 1 known issue, 2 decline/expiry explanations).
+  - `backend/src/l1/duplicate-linker.ts`: Conservative duplicate linking requiring service overlap, active window, and signature match.
+- **Item 10: reset_user_session & Identity Challenge**:
+  - `backend/src/l1/session-reset.ts`: Single-use one-time identity proof (`challengeCode`), atomic proof consumption with reset, simulator reset execution, session invalidation verification, zero-human resolution, audited.
+  - Endpoints: `POST /tickets/:id/identity-challenge` and `POST /tickets/:id/run-runbook`.
+- **Item 11: Escalation Packet & Proposed History Write-Back**:
+  - `backend/src/l1/escalation.ts`: Escalation packet on abstention/manual.
+  - `backend/src/history.ts`: Verified recovery writes `status: 'proposed'` historical case; excluded from automated retrieval until confirmed by reviewer via `confirmHistoricalCase`.
 
 ---
 
-## 6. Items Not Completed
-- Frontend UI (`frontend/` was deliberately not touched per user instruction).
-- Section 12 Remediation verification engine and approval execution loops (scheduled for subsequent Part A blocks).
+## 7. Phase 3: Tests & Acceptance Suite (Items 12–13) — DONE
+- **Item 12: Vitest Rows**:
+  - `tests/execution-guard.test.ts` (7 tests passing): Regulatory guard, execution boundary, L1 prerequisites, role derivation.
+  - `tests/l1.test.ts` (6 tests passing): Classifier, seed runbooks, duplicate linking.
+  - `tests/remediation.test.ts` (7 tests passing): Idempotency, startup reconciliation, gateway ordering, IdP probe, metric floors, history write-back integrity.
+- **Item 13: Acceptance Checks**:
+  - `tests/acceptance-phase3.test.ts` (6 acceptance checks passing):
+    1. `restart_redis` passes 3 times in a row.
+    2. The other 4 actions (`increase_db_pool`, `rollback_deploy`, `failover_gateway`, `failover_idp`) pass once each.
+    3. Double-click approve applies once (idempotent deduplication).
+    4. Broken fix (`?mode=broken`) ends `verification_failed` with incident remaining open.
+    5. Direct executor call bypassing API is refused when outdated, Weak, or incompatible.
+    6. `idp_down_regulated` is held even when ticket names only checkout.
+
+---
+
+## 8. Assumptions & Invariants
+- Database: Postgres (Neon) with active migrations, including `one_active_remediation` partial unique index.
+- Simulator: Runs on port 4000; Backend runs on port 3000.
+- All 5 executable causes (`redis_unavailable`, `db_pool_exhausted`, `bad_deploy`, `payment_gateway_down`, `idp_down`) have `executable: true` in config because all verification scenarios pass.
+
+---
+
+## 9. Items Not Completed (Phases 4, 5, 6)
+- **Phase 4: Eval and Scorecard (Items 14–16)**:
+  - `scripts/eval.ts` Mode A runs, Flow 2 hold runs, negatives.
+  - `GET /scorecard` endpoint and evaluation metrics.
+- **Phase 5: Frontend Incident Cockpit (Items 17–22)**:
+  - Incident cockpit UI, live log stream, scenario trigger buttons, investigation & remediation panel, L1 panel, audit timeline, manual baseline stopwatch.
+- **Phase 6: Ship & Documentation (Items 23–24)**:
+  - README, DEMO.md, fresh-clone check, one-command dev start script.
+
