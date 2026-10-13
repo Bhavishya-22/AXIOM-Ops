@@ -2,6 +2,7 @@ import { prisma } from '../prisma.js';
 import { buildExecutionContext, assertExecutionAllowed } from '../policy/execution-guard.js';
 import { runVerification, VerificationOutcome } from '../verify/verifier.js';
 import { pollAllServicesMetrics } from '../metric-poller.js';
+import { writeProposedHistoricalCase } from '../history.js';
 
 export interface ExecuteRemediationOptions {
   brokenMode?: boolean;
@@ -260,6 +261,30 @@ export async function executeRemediation(
         },
       },
     });
+
+    // Write back proposed HistoricalCase per Section 15
+    try {
+      const inv = await prisma.investigation.findUnique({
+        where: { id: run.investigationId },
+        include: { ticket: true },
+      });
+      if (inv) {
+        await writeProposedHistoricalCase({
+          incidentId: run.incidentId,
+          investigationId: run.investigationId,
+          remediationRunId: run.id,
+          rootCause: inv.rootCauses[0] || 'unknown',
+          actionId: run.actionId,
+          services: inv.ticket?.services || [],
+          signals: [],
+          symptoms: inv.ticket?.description ? [inv.ticket.description] : [],
+          evidenceSnapshotJson: inv.evidenceSnapshotJson,
+          verifierOutcome: finalOutcome,
+        });
+      }
+    } catch (err) {
+      console.error('[Executor] Error writing proposed historical case:', err);
+    }
   } else {
     // Escalate if at max attempts
     const attemptsCount = await prisma.remediationRun.count({

@@ -137,3 +137,64 @@ export async function retrieveTopHistoricalCases(
   scored.sort((a, b) => b.overlapScore - a.overlapScore);
   return scored.slice(0, topN);
 }
+
+/**
+ * Saves a verified recovery as a proposed HistoricalCase per Section 15.
+ * It is proposed only, and retrievable only after reviewer confirmation.
+ */
+export async function writeProposedHistoricalCase(params: {
+  incidentId: string;
+  investigationId: string;
+  remediationRunId: string;
+  rootCause: string;
+  actionId: string;
+  services: string[];
+  signals: string[];
+  symptoms: string[];
+  evidenceSnapshotJson?: any;
+  verifierOutcome?: any;
+}) {
+  const { createHash } = await import('crypto');
+  const evidenceHash = createHash('sha256')
+    .update(JSON.stringify(params.evidenceSnapshotJson || {}))
+    .digest('hex');
+
+  return prisma.historicalCase.create({
+    data: {
+      title: `Recovered Incident ${params.incidentId} - ${params.rootCause}`,
+      symptoms: params.symptoms,
+      signals: params.signals,
+      services: params.services,
+      categories: ['incident_recovery'],
+      rootCause: params.rootCause,
+      actionId: params.actionId,
+      resolutionSteps: [`Executed action ${params.actionId} with verified recovery`],
+      status: 'proposed', // Proposed only! Not retrievable by retrieveTopHistoricalCases
+      evidenceHash,
+      provenanceJson: {
+        incidentId: params.incidentId,
+        investigationId: params.investigationId,
+        remediationRunId: params.remediationRunId,
+        verifierOutcome: params.verifierOutcome,
+        proposedAt: new Date(),
+      },
+    },
+  });
+}
+
+/**
+ * Promotes a proposed case to verified status after reviewer confirmation.
+ */
+export async function confirmHistoricalCase(caseId: string, reviewerId: string) {
+  return prisma.historicalCase.update({
+    where: { id: caseId },
+    data: {
+      status: 'verified',
+      provenanceJson: {
+        reviewerId,
+        confirmedAt: new Date(),
+      },
+    },
+  });
+}
+

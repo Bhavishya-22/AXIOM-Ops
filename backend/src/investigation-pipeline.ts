@@ -11,6 +11,7 @@ import {
 } from './diagnosis.js';
 import { retrieveTopHistoricalCases } from './history.js';
 import { SERVICES } from '@axiomops/shared';
+import { buildEscalationPacket } from './l1/escalation.js';
 
 /**
  * Executes the complete investigation pipeline for an investigation record.
@@ -224,6 +225,18 @@ export async function runInvestigationPipeline(investigationId: string): Promise
           historicalCaseId: diag.historicalCaseId,
           prevention: diag.prevention,
           missingEvidence: diag.missingEvidence,
+          escalationPacket:
+            diag.actionDisposition === 'manual_recommended' ||
+            diag.diagnosisStatus === 'insufficient_evidence' ||
+            diag.diagnosisStatus === 'ambiguous_multiple_causes'
+              ? buildEscalationPacket({
+                  rootCauses: diag.rootCauses,
+                  candidateCauses: scorerResult.shortlist,
+                  evidenceSnapshotJson: pack,
+                  dispositionReason: diag.dispositionReason,
+                  actionDisposition: diag.actionDisposition,
+                })
+              : null,
         } as any,
         outcomeAt,
       },
