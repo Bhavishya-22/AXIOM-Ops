@@ -87,8 +87,8 @@ export function checkCacheHitRatio(
 }
 
 export function check5xxRate(afterPct: number, baselinePct: number): MetricCheckResult {
-  const { maxDeltaPct } = THRESHOLDS.fiveXx;
-  const threshold = baselinePct + maxDeltaPct;
+  const maxDelta = baselinePct <= 1.0 ? 0.01 : 1.0;
+  const threshold = baselinePct + maxDelta;
   const status = afterPct <= threshold ? 'pass' : 'fail';
   return { checkName: 'fiveXxRate', status, observed: afterPct, baseline: baselinePct, threshold };
 }

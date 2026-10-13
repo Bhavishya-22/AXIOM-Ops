@@ -257,18 +257,23 @@ export async function runVerification(params: {
   const passedCount = checks.filter((c) => c.passed).length;
   const hasInconclusive = checks.some((c) => c.inconclusive) || metricChecks.some((m) => m.status === 'inconclusive');
 
+  // Must have at least one positive recovery proof (health, restored log, or fresh successes) to be partially_recovered
+  const hasPositiveRecovery = checks.some(
+    (c) => (c.name.includes('health') || c.name.includes('restored') || c.name.includes('successes') || c.name.includes('done') || c.name.includes('resized')) && c.passed
+  );
+
   let outcome: VerificationOutcome['outcome'];
   if (hasInconclusive) {
     outcome = 'verification_inconclusive';
     reasons.push('thin_metric_baseline_or_traffic');
   } else if (passedCount === total && total > 0) {
     outcome = 'resolved';
-  } else if (passedCount > 0) {
+  } else if (passedCount > 0 && hasPositiveRecovery) {
     outcome = 'partially_recovered';
     reasons.push(`Partial recovery: ${passedCount}/${total} checks passed`);
   } else {
     outcome = 'verification_failed';
-    reasons.push('Zero verification checks passed');
+    reasons.push('Verification failed: zero positive recovery proofs passed');
   }
 
   return { outcome, checks, metricChecks, reasons };
