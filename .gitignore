@@ -38,3 +38,7 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Simulator runtime state
+simulator/state.json*
+simulator/ledger.json*
