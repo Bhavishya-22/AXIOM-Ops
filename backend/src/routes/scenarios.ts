@@ -5,15 +5,17 @@ export const scenariosRouter = Router();
 scenariosRouter.post('/:name/trigger', async (req, res) => {
   const { name } = req.params;
   const simulatorUrl = process.env.SIMULATOR_URL || 'http://localhost:4000';
-  const controlToken = process.env.CONTROL_TOKEN || 'test-control-token';
+  const controlToken = process.env.CONTROL_TOKEN || 'dev-control-token-456';
+  const skipBaseline = req.query.skipBaselineCheck !== 'false';
 
   try {
-    const response = await fetch(`${simulatorUrl}/control/trigger/${name}`, {
+    const response = await fetch(`${simulatorUrl}/control/trigger/${name}?skipBaselineCheck=${skipBaseline}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${controlToken}`,
       },
+      body: JSON.stringify({ skipBaselineCheck: skipBaseline }),
     });
 
     const data = await response.json();
