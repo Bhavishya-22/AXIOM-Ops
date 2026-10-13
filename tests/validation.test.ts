@@ -166,7 +166,7 @@ describe('Server-Side Diagnosis Output Validation (Section 20 & Section 11)', ()
   });
 
   it('rejects insufficient_evidence with non-null actionId or empty missingEvidence', () => {
-    const invalidAbstention: LlmOutput = {
+    const invalidAbstention: any = {
       status: 'insufficient_evidence',
       candidates: [],
       rootCauseCategory: 'unknown',

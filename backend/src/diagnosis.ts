@@ -16,7 +16,9 @@ export interface DiagnosisOutput {
     | 'insufficient_evidence'
     | 'ambiguous_multiple_causes'
     | 'invalid_model_output'
-    | 'failed';
+    | 'failed'
+    | 'not_an_incident'
+    | null;
   causeMode: 'single' | 'compound' | null;
   actionDisposition: 'executable' | 'manual_recommended' | 'no_action';
   dispositionReason: string | null;

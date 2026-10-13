@@ -94,8 +94,8 @@ export async function runInvestigationPipeline(investigationId: string): Promise
           status: scorerResult.status,
           causeMode: scorerResult.causeMode,
           shortlist: scorerResult.shortlist,
-          suppressed: scorerResult.suppressed,
-        },
+          suppressed: scorerResult.suppressed as any,
+        } as any,
       },
     });
 
