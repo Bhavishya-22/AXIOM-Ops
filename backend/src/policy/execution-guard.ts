@@ -14,11 +14,17 @@ import {
  * Builds typed ExecutionContext strictly from stored database rows.
  * Request bodies are never used to build this context.
  */
-export async function buildExecutionContext(input: {
+export interface BuildExecutionContextInput {
   kind: 'L2' | 'L1';
+  ids?: {
+    investigationId?: string;
+    ticketId?: string;
+    demoUserId?: string;
+    challengeId?: string;
+  };
   investigationId?: string;
-  ticketId: string;
-  action: string;
+  ticketId?: string;
+  action?: string;
   approval?: { demoUserId: string; role: Role; at: Date } | null;
   identityProof?: {
     challengeId: string;
@@ -26,19 +32,31 @@ export async function buildExecutionContext(input: {
     verifiedAt: Date;
     consumedAt: Date | null;
   } | null;
-}): Promise<ExecutionContext> {
-  const { kind, investigationId, ticketId, action, approval, identityProof } = input;
+}
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: ticketId },
-    include: { incident: true },
-  });
-
-  if (!ticket) {
-    throw new Error(`Ticket '${ticketId}' not found in database.`);
-  }
+/**
+ * Builds typed ExecutionContext strictly from stored database rows.
+ * Request bodies are never used to build this context.
+ */
+export async function buildExecutionContext(input: BuildExecutionContextInput): Promise<ExecutionContext> {
+  const kind = input.kind;
+  const investigationId = input.ids?.investigationId || input.investigationId;
+  const passedTicketId = input.ids?.ticketId || input.ticketId;
+  let approval = input.approval;
 
   if (kind === 'L1') {
+    if (!passedTicketId) {
+      throw new Error('ticketId is required for L1 execution context.');
+    }
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: passedTicketId },
+      include: { incident: true },
+    });
+
+    if (!ticket) {
+      throw new Error(`Ticket '${passedTicketId}' not found in database.`);
+    }
+
     return {
       kind: 'L1',
       action: 'reset_user_session',
@@ -52,7 +70,7 @@ export async function buildExecutionContext(input: {
         incidentId: ticket.incidentId,
         requesterId: ticket.requesterId,
       },
-      identityProof: identityProof || null,
+      identityProof: input.identityProof || null,
     };
   }
 
@@ -70,9 +88,26 @@ export async function buildExecutionContext(input: {
     throw new Error(`Investigation '${investigationId}' not found in database.`);
   }
 
-  const incident = investigation.ticket.incident;
+  const ticket = investigation.ticket;
+  const incident = investigation.ticket?.incident;
   if (!incident) {
     throw new Error(`Investigation '${investigationId}' is associated with an unlinked ticket.`);
+  }
+
+  const rootCause = investigation.rootCauses[0];
+  const causeDef = CAUSES[rootCause];
+  const action = (input.action || causeDef?.compatibleAction || '') as ActionId;
+
+  const demoUserId = input.ids?.demoUserId || approval?.demoUserId;
+  if (demoUserId && !approval) {
+    const demoUser = await prisma.demoUser.findUnique({ where: { id: demoUserId } });
+    if (demoUser) {
+      approval = {
+        demoUserId: demoUser.id,
+        role: demoUser.role as Role,
+        at: new Date(),
+      };
+    }
   }
 
   // Find latest diagnosed investigation for this ticket

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
+import { handleApproveInvestigation } from './remediations.js';
 
 export const investigationsRouter = Router();
 
@@ -30,4 +31,10 @@ investigationsRouter.get('/:id', async (req, res) => {
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// POST /investigations/:id/approve
+investigationsRouter.post('/:id/approve', async (req, res) => {
+  const { id } = req.params;
+  return handleApproveInvestigation(req, res, id);
 });
