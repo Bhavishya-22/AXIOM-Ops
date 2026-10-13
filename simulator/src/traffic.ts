@@ -125,12 +125,40 @@ export class TrafficSimulator {
     });
   }
 
+  public emitCustomLog(service: string, level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR', message: string): void {
+    this.emitLog(service, level, message);
+  }
+
+  private faultChecker: (() => { isFaultActive: boolean; activeScenario: any }) | null = null;
+
+  public setFaultChecker(checker: () => { isFaultActive: boolean; activeScenario: any }): void {
+    this.faultChecker = checker;
+  }
+
   /**
    * Simulate a single request outcome for a service.
+   * If an active fault affects this service, sustained failure rate applies.
    */
   public simulateRequest(service: 'checkout' | 'payments'): void {
     const m = this.getMetricsForService(service);
     m.requestsTotal++;
+
+    if (this.faultChecker) {
+      const { isFaultActive, activeScenario } = this.faultChecker();
+      if (isFaultActive && activeScenario?.affectedServices.includes(service)) {
+        const shouldFail = Math.random() < (activeScenario.failureRate ?? 0.5);
+        if (shouldFail) {
+          m.errorsTotal++;
+          this.recordLatency(m, 850);
+          const errorMsg =
+            service === 'checkout'
+              ? 'request failed with status 503'
+              : 'request failed with status 500';
+          this.emitLog(service, 'ERROR', errorMsg);
+          return;
+        }
+      }
+    }
 
     // Random business outcome (~2%): card decline or token invalid
     const isBusinessOutcome = Math.random() < 0.02;
