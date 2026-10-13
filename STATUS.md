@@ -268,9 +268,19 @@ The shared contracts in `shared/` were preserved without modification. Frontend 
 
 ---
 
-## 10. Items Not Completed (Phases 5, 6)
-- **Phase 5: Frontend Incident Cockpit (Items 17–22)**:
-  - Incident cockpit UI, live log stream, scenario trigger buttons, investigation & remediation panel, L1 panel, audit timeline, manual baseline stopwatch.
+## 10. Phase 5: Frontend Incident Cockpit (Items 17–22) — DONE
+- **One-Page Incident Cockpit UI (`frontend/src/App.tsx`, `frontend/src/index.css`)**:
+  - Mission control layout with zero purple gradients (sleek dark space obsidian `#070B12`, electric cyan `#06B6D4`, emerald `#10B981`, amber `#F59E0B`, crimson `#EF4444`).
+  - Left pane: live telemetry and log stream with category badges, service and level filters, auto-scroll toggle.
+  - Right pane top: interactive scenario triggers for all 5 fault families, regulated variant, and negative scenarios; Mode B manual report.
+  - Right pane middle: active incident overview, evidence pack summary, root cause diagnosis, qualitative evidence level badges, cited log IDs, and **Regulatory Hold** warning banner.
+  - Right pane bottom: remediation action card, single-click approve button, verification checklists, and baseline/incident/after comparison.
+  - Benchmark Scorecard tab: live metrics from `GET /scorecard` (accuracy, abstention, latency breakdown, manual vs copilot comparison table).
+  - L1 Runbooks tab: `reset_user_session` execution with simulated one-time identity challenge code generation and consumption.
+
+---
+
+## 11. Items Not Completed (Phase 6)
 - **Phase 6: Ship & Documentation (Items 23–24)**:
   - README, DEMO.md, fresh-clone check, one-command dev start script.
 
