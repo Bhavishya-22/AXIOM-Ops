@@ -97,7 +97,55 @@ The shared contracts in `shared/` were preserved without modification. Frontend 
 |---|---|---|
 | One trigger of `redis_down` creates exactly one incident, ticket, investigation with no click | **PASSED** | Mode A detector detected 2 consecutive breaches and created exactly 1 Incident (`openSlot: 1`), 1 Ticket (`autoKey`), 1 Investigation (`autoKey`). Also verified across 3 consecutive resets. |
 | Redis diagnosed with DB pool exhaustion recorded as suppressed, evidence cited | **PASSED** | Scorer collapsed DB pool cascade into Redis using `cache_fallback_to_db` mechanism and `dbFallbackQueriesTotal >= 20`. DB pool recorded in `suppressed` with reason `collapsed_by_redis_unavailable_mechanism_proven`. Evidence cited points to valid nodes. |
-| Every negative scenario returns specified outcome with no LLM call | **PASSED** | `payment_decline_spike` (`not_an_incident`), `token_expiry_spike` (`not_an_incident`), `normal_deploy` (`not_an_incident`), `healthy` (`insufficient_evidence`), `unknown_errors` (`insufficient_evidence`), `supporting_only` (`insufficient_evidence`), `ambiguous` (`ambiguous_multiple_causes`), `redis_plus_independent_db` (`ambiguous_multiple_causes`), `compound` (`diagnosed`, compound, manual-only). All evaluated deterministically with 0 LLM calls. |
+---
+
+## 4. Phase 1: Remediation and Guard (Items 1–8)
+
+### What Is Done:
+- **Item 1 (Commit `299fa2e`)**: Demo authentication (`backend/src/auth/demo-auth.ts`) deriving `approverRole` strictly from `DemoUser` table (`operator-1`, `operator-2`, `sme-1`). Caller-supplied roles are ignored.
+- **Item 2 (Commit `83b49be`)**: Shared execution guard (`backend/src/policy/execution-guard.ts`):
+  - `buildExecutionContext` built from stored database rows only.
+  - Evidence-derived `effectiveImpactServices` combining ticket services, error-emitting services in pack, action target service, and cause symptom signatures.
+  - Fail-closed guard asserting separate L2 and L1 prerequisites.
+  - Regulated service hold for both L2 and L1 actions.
+  - Called independently by Approve API, remediation executor, and L1 runbook engine immediately before touching simulator.
+- **Item 3 (Commit `fd49170`)**: `POST /investigations/:id/approve`:
+  - `idempotencyKey` unique handling returning existing run on replay.
+  - Partial unique index `one_active_remediation` (`CREATE UNIQUE INDEX one_active_remediation ON "RemediationRun" ("incidentId") WHERE status = 'in_progress'`) deployed via custom SQL migration.
+  - Catches Prisma unique violation `P2002` and returns active run.
+  - 409 responses for unlinked tickets, outdated investigations, Weak level, evidence gaps, material unresolved clusters, and regulated holds.
+  - Rejected approvals are logged to `AuditEvent`.
+- **Item 4 (Commit `caa7d52`)**: Execution state machine:
+  - Sequence: `pending` -> `apply_sent` -> `apply_confirmed` -> `verifying` -> `finished`.
+  - Persists `apply_sent` before calling simulator fix endpoint.
+  - `attemptId = RemediationRun.id`.
+  - `startupRemediationReconciliation` implements Section 12 reconciliation table on reboot.
+- **Item 5 (Commit `73dc5f3`)**: Verifier engine & Simulator endpoints:
+  - `backend/src/verify/thresholds.ts` and `backend/src/verify/verifier.ts` implementing all 5 fault family check lists:
+    - `restart_redis`: 3 consecutive health polls, `redis_restored` log, >= 5 cache successes, no new conn refused, cache hit & p95 thresholds with floors.
+    - `increase_db_pool`: pool wait, active connections < 80%, `db_pool_resized` log, >= 5 DB successes, no pool exhausted.
+    - `rollback_deploy`: rollback log, 5xx rate delta <= 1%, validation errors cleared, >= 5 successes.
+    - `failover_gateway`: gateway health, `gateway_failover_done` log, >= 5 authorizations, per-payment ordering (status-check timestamp <= retry timestamp) and zero duplicate charges.
+    - `failover_idp`: IdP health, `idp_failover_done` log, >= 5 token validations, negative token probe returning 401, unchanged `authPolicyVersion`.
+  - Metric counter deltas evaluated since apply snapshot.
+  - 3 metric snapshots (`appliedCountersJson`, `incidentMetricsJson`, `afterMetricsJson`).
+  - Outcomes: `resolved`, `partially_recovered`, `verification_failed`, `verification_inconclusive`.
+- **Item 6 (Commit `a63569f`)**: Lifecycle resolution rules:
+  - Incident and ticket close only on `resolved`.
+  - Linked tickets resolve with same evidence.
+  - Maximum 1 extra attempt allowed, followed by escalation `AuditEvent`.
+- **Item 7 (Commit `10a8fc6`)**: Regulated Service Invariant (`idp_down_regulated`):
+  - Execution guard halts execution (`regulated_service_requires_change_control`).
+  - Audit timeline records `change_control_required` event with diagnosis, evidence IDs, impact services, recommended action, and owning team.
+  - `regulatedHold = true`, 0 calls reach simulator fix endpoint, API returns 409.
+- **Item 8 (Commit `2a72bc9`)**: `GET /remediations/:id` mounted in `backend/src/server.ts`.
+
+### Status Summary:
+- **Done**: Items 1, 2, 3, 4, 5, 6, 7, 8.
+- **Partial**: None.
+- **Assumptions**: None.
+- **Not Completed**: None in Phase 1.
+
 | All 4 other fault families diagnose correctly | **PASSED** | `db_pool_exhausted`, `bad_deploy`, `payment_gateway_down`, and `idp_down` all diagnose their respective causes accurately. `idp_down_regulated` sets `regulatedHold: true` and flags `dispositionReason: 'regulated_service_requires_change_control'`. |
 | `redis_with_unexplained_cluster` is manual-only | **PASSED** | Material cluster (3 instances of novel payments error) forced `actionDisposition: 'manual_recommended'`, `dispositionReason: 'unexplained_error_cluster'`, and `evidenceLevel: 'Weak'`. |
 | All tests pass | **PASSED** | 18 test files, 106 tests passing in Vitest. |
