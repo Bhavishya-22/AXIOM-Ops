@@ -146,6 +146,37 @@ The shared contracts in `shared/` were preserved without modification. Frontend 
 - **Assumptions**: None.
 - **Not Completed**: None in Phase 1.
 
+---
+
+## 5. Phase 2: L1 Ticket Handling (Items 9–11)
+
+### What Is Done:
+- **Item 9 (Commit `1ae27c8`)**: Classifier and triage:
+  - `backend/src/l1/classifier.ts`: Keyword & intent matcher categorizing tickets into `how_to`, `access_request`, `known_issue`, `not_an_incident`, and `incident_report`.
+  - 7 seed runbooks (`backend/src/l1/runbooks.ts`):
+    - 3 how-tos: `how_to_clear_browser_cache`, `how_to_update_payment_method`, `how_to_verify_mfa_device`.
+    - 1 access request: `reset_user_session`.
+    - 1 known issue: `known_issue_scheduled_maintenance`.
+    - 2 expected business outcome explanations: `payment_decline_explanation` and `expired_token_explanation` (`not_an_incident` with deterministic explanations and auto-resolution).
+  - `backend/src/l1/duplicate-linker.ts`: Conservative duplicate linking requiring (1) service overlap with incident scoped services, (2) ticket creation timestamp inside incident window, and (3) text or evidence match against diagnostic/supporting signals. Otherwise categorized strictly as `possible_duplicate` and kept separate.
+- **Item 10 (Commit `ada3d79`)**: Self-service session reset (`reset_user_session`):
+  - `backend/src/l1/session-reset.ts`:
+    - Simulated one-time-code identity proof requesting challenge via `POST /control/identity/challenge` and verification via `POST /control/identity/verify`. Proof is single-use and consumed atomically upon reset.
+    - Evaluates shared execution guard (held if impact touches regulated services).
+    - Calls simulator `POST /control/reset-user-session`.
+    - Verifies old session is invalidated and new session login succeeds.
+    - Resolves ticket with zero human intervention and logs `runbook_executed` audit event.
+  - Endpoints: `POST /tickets/:id/identity-challenge` and `POST /tickets/:id/run-runbook`.
+- **Item 11 (Commit `6544a95`)**: Escalation and History Write-Back:
+  - `backend/src/l1/escalation.ts`: Generates structured escalation packet containing owning team, cited evidence IDs, candidate causes, separating evidence, and recommended manual actions when engine abstains or diagnosis requires manual review. Attached to `investigation.resultJson.escalationPacket`.
+  - `backend/src/history.ts`: Implemented `writeProposedHistoricalCase` writing verified recoveries to `HistoricalCase` table with `status: 'proposed'`. Proposed cases are strictly excluded from automated retrieval until a reviewer promotes them via `confirmHistoricalCase`.
+
+### Status Summary:
+- **Done**: Items 9, 10, 11.
+- **Partial**: None.
+- **Assumptions**: None.
+- **Not Completed**: None in Phase 2.
+
 | All 4 other fault families diagnose correctly | **PASSED** | `db_pool_exhausted`, `bad_deploy`, `payment_gateway_down`, and `idp_down` all diagnose their respective causes accurately. `idp_down_regulated` sets `regulatedHold: true` and flags `dispositionReason: 'regulated_service_requires_change_control'`. |
 | `redis_with_unexplained_cluster` is manual-only | **PASSED** | Material cluster (3 instances of novel payments error) forced `actionDisposition: 'manual_recommended'`, `dispositionReason: 'unexplained_error_cluster'`, and `evidenceLevel: 'Weak'`. |
 | All tests pass | **PASSED** | 18 test files, 106 tests passing in Vitest. |
