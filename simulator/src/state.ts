@@ -32,7 +32,11 @@ export class SimulatorStateManager {
   private ledgerFilePath: string;
   private state: SimulatorState;
 
-  constructor(baseDir: string = path.resolve(process.cwd(), 'simulator')) {
+  constructor(
+    baseDir: string = process.cwd().endsWith('simulator')
+      ? process.cwd()
+      : path.resolve(process.cwd(), 'simulator')
+  ) {
     this.stateFilePath = path.join(baseDir, 'state.json');
     this.ledgerFilePath = path.join(baseDir, 'ledger.json');
     if (!fs.existsSync(baseDir)) {

@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx scripts/eval.ts",
+    "dev:backend": "npm --workspace=backend run dev",
+    "dev:simulator": "npm --workspace=simulator run dev",
+    "dev:frontend": "npm --workspace=frontend run dev",
     "build": "npm run --workspaces --if-present build"
   },
   "devDependencies": {
