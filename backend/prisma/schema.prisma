@@ -1,0 +1,226 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Log {
+  id                 String   @id @default(cuid())
+  ts                 DateTime
+  service            String
+  category           String
+  team               String
+  level              String
+  message            String
+  signal             String?
+  signalKind         String?
+  ruleVersion        String?
+  messageHash        String
+  sessionId          String
+  serviceSeq         Int
+  class              String   // routine, notable, incident, snapshot
+  expiresAt          DateTime
+  pinnedByIncidentId String?
+  serviceVersion     String?
+  requestId          String?
+  traceId            String?
+  origin             String
+  meta               Json?
+
+  @@unique([origin, sessionId, service, serviceSeq])
+  @@index([service, ts])
+  @@index([category, ts])
+  @@index([signal, ts])
+  @@index([sessionId, ts])
+  @@index([messageHash])
+}
+
+model IngestGap {
+  id        String   @id @default(cuid())
+  source    String
+  services  String[] // affected services; '*' means all services of source
+  fromTs    DateTime
+  toTs      DateTime
+  reason    String   // missing_sequence, rejected_batch, retention_loss
+  createdAt DateTime @default(now())
+}
+
+model MetricSample {
+  id                   String   @id @default(cuid())
+  ts                   DateTime
+  sessionId            String
+  service              String
+  requestsTotal        Int
+  successesTotal       Int
+  errorsTotal          Int
+  businessOutcomesTotal Int
+  cacheHitsTotal       Int      @default(0)
+  cacheLookupsTotal    Int      @default(0)
+  gauges               Json?    // pool wait, active connections
+  latencyBucketsJson   Json?
+  scenarioCountersJson Json?    // dbFallbackQueriesTotal, authorizationsNewRouteTotal, etc.
+
+  @@index([sessionId, service, ts])
+}
+
+model Incident {
+  id                  String           @id @default(cuid())
+  scenarioRunId       String?
+  sessionId           String
+  openSlot            Int?             @unique // 1 while open, null once resolved (ensures max 1 open incident)
+  status              String           @default("open") // open, resolved
+  detectedAt          DateTime         @default(now())
+  startedAt           DateTime         @default(now())
+  resolvedAt          DateTime?
+  baselineMetricsJson Json?
+  humanDetectedAt     DateTime?
+
+  tickets             Ticket[]
+  remediationRuns     RemediationRun[]
+  auditEvents         AuditEvent[]
+
+  @@index([sessionId])
+}
+
+model Ticket {
+  id          String          @id @default(cuid())
+  title       String
+  description String
+  services    String[]
+  ticketType  String          @default("incident_report") // incident_report, service_request
+  status      String          @default("open")
+  incidentId  String?
+  incident    Incident?       @relation(fields: [incidentId], references: [id])
+  linkStatus  String          @default("none") // linked, possible_duplicate, none
+  source      String          @default("auto") // auto, user
+  autoKey     String?         @unique // unique incidentId for auto-tickets
+  requesterId String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  investigations Investigation[]
+  auditEvents    AuditEvent[]
+}
+
+model Investigation {
+  id                     String           @id @default(cuid())
+  ticketId               String
+  ticket                 Ticket           @relation(fields: [ticketId], references: [id])
+  status                 String           @default("running") // running, done, failed
+  classification         String?
+  diagnosisStatus        String?
+  causeMode              String?
+  actionDisposition      String?
+  dispositionReason      String?
+  rootCauses             String[]
+  suppressedJson         Json?
+  unresolvedClustersJson Json?
+  effectiveImpactJson    Json?
+  regulatedHold          Boolean          @default(false)
+  evidenceComplete       Boolean          @default(true)
+  evidenceLevel          String?
+  levelReasonsJson       Json?
+  evidenceSnapshotJson   Json?
+  resultJson             Json?
+  timingsJson            Json?
+  investigationStartedAt DateTime         @default(now())
+  outcomeAt              DateTime?
+  autoKey                String?          @unique // unique ticketId for auto-investigations
+
+  remediationRuns        RemediationRun[]
+  auditEvents            AuditEvent[]
+}
+
+model RemediationRun {
+  id                  String        @id @default(cuid())
+  incidentId          String
+  incident            Incident      @relation(fields: [incidentId], references: [id])
+  investigationId     String
+  investigation       Investigation @relation(fields: [investigationId], references: [id])
+  attemptId           String
+  actionId            String
+  idempotencyKey      String        @unique
+  executionState      String        @default("pending") // pending, apply_sent, apply_confirmed, verifying, finished
+  status              String        @default("in_progress")
+  activeIncidentId    String?       @unique // nullable unique column ensuring one active remediation per incident
+  approvedBy          String
+  approverRole        String
+  approvedAt          DateTime      @default(now())
+  appliedAt           DateTime?
+  appliedCountersJson Json?
+  incidentMetricsJson Json?
+  afterMetricsJson    Json?
+  verificationJson    Json?
+  outcome             String?       // resolved, partially_recovered, verification_failed, verification_inconclusive
+
+  auditEvents         AuditEvent[]
+}
+
+model DemoUser {
+  id        String   @id
+  name      String
+  role      String   // operator, sme
+  tokenHash String
+  createdAt DateTime @default(now())
+}
+
+model DeployEvent {
+  id                       String   @id @default(cuid())
+  ts                       DateTime @default(now())
+  service                  String
+  fromVersion              String
+  toVersion                String
+  schemaCompatibleRollback Boolean  @default(true)
+}
+
+model AuditEvent {
+  id               String          @id @default(cuid())
+  ts               DateTime        @default(now())
+  incidentId       String?
+  incident         Incident?       @relation(fields: [incidentId], references: [id])
+  ticketId         String?
+  ticket           Ticket?         @relation(fields: [ticketId], references: [id])
+  investigationId  String?
+  investigation    Investigation?  @relation(fields: [investigationId], references: [id])
+  remediationRunId String?
+  remediationRun   RemediationRun? @relation(fields: [remediationRunId], references: [id])
+  actor            String          // system, user
+  actorRole        String?
+  type             String
+  evidenceLogIds   String[]
+  payloadJson      Json?
+}
+
+model HistoricalCase {
+  id              String   @id @default(cuid())
+  title           String
+  symptoms        String[]
+  signals         String[]
+  services        String[]
+  categories      String[]
+  rootCause       String
+  resolutionSteps String[]
+  actionId        String
+  status          String   @default("proposed") // seeded, proposed, verified
+  provenanceJson  Json?
+  evidenceHash    String?
+}
+
+model EvalRun {
+  id                 String   @id @default(cuid())
+  scenario           String
+  sessionId          String
+  expectedLabel      String
+  predictedLabel     String
+  correct            Boolean
+  evidenceConsistent Boolean
+  actionCorrect      Boolean
+  unsafeAction       Boolean
+  resolved           Boolean
+  timingsJson        Json?
+  createdAt          DateTime @default(now())
+}

@@ -1,0 +1,20 @@
+{
+  "name": "axiomops-ai",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend",
+    "simulator"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "npm run --workspaces --if-present build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
