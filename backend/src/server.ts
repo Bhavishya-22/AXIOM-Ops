@@ -6,6 +6,7 @@ import { incidentsRouter } from './routes/incidents.js';
 import { ticketsRouter } from './routes/tickets.js';
 import { investigationsRouter } from './routes/investigations.js';
 import { scenariosRouter } from './routes/scenarios.js';
+import { remediationsRouter } from './routes/remediations.js';
 
 export function createServer() {
   const app = express();
@@ -25,6 +26,7 @@ export function createServer() {
   app.use('/incidents', incidentsRouter);
   app.use('/tickets', ticketsRouter);
   app.use('/investigations', investigationsRouter);
+  app.use('/remediations', remediationsRouter);
 
   return app;
 }
