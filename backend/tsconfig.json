@@ -12,5 +12,5 @@
       "@axiomops/shared": ["../shared/src/index.ts"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "prisma/**/*"]
 }
