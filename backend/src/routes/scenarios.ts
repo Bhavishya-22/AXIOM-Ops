@@ -29,3 +29,26 @@ scenariosRouter.post('/:name/trigger', async (req, res) => {
     });
   }
 });
+
+scenariosRouter.post('/control/reset', async (_req, res) => {
+  const simulatorUrl = process.env.SIMULATOR_URL || 'http://localhost:4000';
+  const controlToken = process.env.CONTROL_TOKEN || 'dev-control-token-456';
+
+  try {
+    const response = await fetch(`${simulatorUrl}/control/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${controlToken}`,
+      },
+    });
+
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (err: any) {
+    return res.status(502).json({
+      error: 'Failed to contact simulator',
+      details: err.message,
+    });
+  }
+});
