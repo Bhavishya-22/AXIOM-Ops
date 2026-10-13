@@ -26,6 +26,18 @@ export function createSimulatorApp() {
   // 1. GET /health/:service
   app.get('/health/:service', (req: Request, res: Response) => {
     const service = String(req.params.service);
+    const active = scenarioEngine.getActiveScenario();
+    const isFault = scenarioEngine.isFaultActive();
+
+    if (isFault && active && active.affectedServices.includes(service)) {
+      return res.status(503).json({
+        status: 'degraded',
+        service,
+        error: 'Service degraded due to active fault',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     res.status(200).json({
       status: 'ok',
       service,
@@ -124,6 +136,133 @@ export function createSimulatorApp() {
       trueAction: active?.trueAction ?? null,
       faultOnsetAt: scenarioEngine.getFaultOnsetAt(),
       runId: scenarioEngine.getCurrentRunId(),
+    });
+  });
+
+  // 8. GET /control/payment-records/:runId/:attemptId
+  app.get('/control/payment-records/:runId/:attemptId', requireControlToken, (req: Request, res: Response) => {
+    const mode = (req.query.mode as string) || '';
+    const now = Date.now();
+
+    if (mode === 'duplicate_charge') {
+      return res.status(200).json({
+        payments: [
+          {
+            paymentId: 'pay-dup-1',
+            idempotencyKey: 'idem-dup-1',
+            capturedAtApply: now - 5000,
+            statusCheck: { result: 'completed', ts: now - 3000 },
+            retry: { ts: now - 2000, idempotencyKey: 'idem-dup-1' },
+            chargeCount: 2,
+          },
+        ],
+      });
+    }
+
+    if (mode === 'ordering_failed') {
+      return res.status(200).json({
+        payments: [
+          {
+            paymentId: 'pay-ord-1',
+            idempotencyKey: 'idem-ord-1',
+            capturedAtApply: now - 5000,
+            statusCheck: { result: 'pending', ts: now - 1000 },
+            retry: { ts: now - 2000, idempotencyKey: 'idem-ord-1' },
+            chargeCount: 1,
+          },
+        ],
+      });
+    }
+
+    res.status(200).json({
+      payments: [
+        {
+          paymentId: 'pay-ok-1',
+          idempotencyKey: 'idem-ok-1',
+          capturedAtApply: now - 8000,
+          statusCheck: { result: 'pending', ts: now - 6000 },
+          retry: { ts: now - 4000, idempotencyKey: 'idem-ok-1' },
+          chargeCount: 1,
+        },
+        {
+          paymentId: 'pay-ok-2',
+          idempotencyKey: 'idem-ok-2',
+          capturedAtApply: now - 8000,
+          statusCheck: { result: 'completed', ts: now - 5000 },
+          retry: null,
+          chargeCount: 1,
+        },
+      ],
+    });
+  });
+
+  // 9. POST /probe/validate-token
+  app.post('/probe/validate-token', (req: Request, res: Response) => {
+    const token = req.body?.token;
+    const mode = req.query?.mode;
+
+    if (mode === 'insecure') {
+      return res.status(200).json({ valid: true, subject: 'insecure-probe' });
+    }
+
+    if (!token || token.includes('invalid') || token.includes('expired') || token === 'bad-token') {
+      return res.status(401).json({ valid: false, error: 'Unauthorized: invalid token' });
+    }
+
+    return res.status(200).json({ valid: true, subject: 'probe-valid-user' });
+  });
+
+  // 10. GET /control/auth-policy-version
+  app.get('/control/auth-policy-version', requireControlToken, (req: Request, res: Response) => {
+    const version = (req.query.version as string) || '2026.1';
+    res.status(200).json({ authPolicyVersion: version });
+  });
+
+  // 11. Identity Challenge & Verification (Section 15 for L1)
+  const activeChallenges = new Map<string, { userId: string; code: string; verifiedAt?: Date; consumedAt?: Date | null }>();
+
+  app.post('/control/identity/challenge', requireControlToken, (req: Request, res: Response) => {
+    const userId = req.body?.userId || 'user-default';
+    const challengeId = `chal-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const code = '849201';
+
+    activeChallenges.set(challengeId, { userId, code, consumedAt: null });
+    res.status(200).json({ challengeId, code, userId });
+  });
+
+  app.post('/control/identity/verify', requireControlToken, (req: Request, res: Response) => {
+    const { challengeId, code } = req.body;
+    const chal = activeChallenges.get(challengeId);
+
+    if (!chal || chal.code !== code) {
+      return res.status(400).json({ valid: false, error: 'Invalid challenge ID or code' });
+    }
+
+    chal.verifiedAt = new Date();
+    res.status(200).json({
+      valid: true,
+      challengeId,
+      userId: chal.userId,
+      verifiedAt: chal.verifiedAt.toISOString(),
+      consumedAt: null,
+    });
+  });
+
+  app.post('/control/reset-user-session', requireControlToken, (req: Request, res: Response) => {
+    const { userId, challengeId } = req.body;
+    const chal = activeChallenges.get(challengeId);
+
+    if (!chal || chal.userId !== userId || chal.consumedAt !== null) {
+      return res.status(400).json({ error: 'Valid unconsumed identity proof required' });
+    }
+
+    chal.consumedAt = new Date();
+    res.status(200).json({
+      status: 'session_reset_complete',
+      userId,
+      oldSessionInvalidated: true,
+      newSessionAvailable: true,
+      consumedAt: chal.consumedAt.toISOString(),
     });
   });
 
