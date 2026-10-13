@@ -578,7 +578,19 @@ export const SCENARIOS: Record<string, ScenarioDefinition> = {
         at: 1000,
         service: 'payments',
         level: 'ERROR',
-        variants: ['unexplained memory corruption on payments processor', 'unexplained memory corruption on payments processor', 'unexplained memory corruption on payments processor'],
+        variants: ['unexplained memory corruption on payments processor'],
+      },
+      {
+        at: 1200,
+        service: 'payments',
+        level: 'ERROR',
+        variants: ['unexplained memory corruption on payments processor'],
+      },
+      {
+        at: 1400,
+        service: 'payments',
+        level: 'ERROR',
+        variants: ['unexplained memory corruption on payments processor'],
       },
       {
         at: 3000,

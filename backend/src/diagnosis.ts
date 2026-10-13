@@ -105,19 +105,22 @@ export function validateDiagnosisOutput(
 ): ValidationResult {
   const errors: string[] = [];
 
+  if ((output as any).status === 'insufficient_evidence') {
+    if ((output as any).actionId !== null && (output as any).actionId !== undefined) {
+      errors.push('ActionId must be null for insufficient_evidence');
+    }
+    if (!(output as any).missingEvidence || (output as any).missingEvidence.length === 0) {
+      errors.push('missingEvidence must be non-empty for insufficient_evidence');
+    }
+  }
+
   // 1. Zod schema validation
   const schemaCheck = validateLlmOutput(output);
   if (!schemaCheck.success) {
-    return { valid: false, errors: ['Schema validation failed: ' + schemaCheck.error.message] };
+    errors.push('Schema validation failed: ' + schemaCheck.error.message);
   }
 
   if (output.status === 'insufficient_evidence') {
-    if (output.actionId !== null && output.actionId !== undefined) {
-      errors.push('ActionId must be null for insufficient_evidence');
-    }
-    if (!output.missingEvidence || output.missingEvidence.length === 0) {
-      errors.push('missingEvidence must be non-empty for insufficient_evidence');
-    }
     return { valid: errors.length === 0, errors };
   }
 

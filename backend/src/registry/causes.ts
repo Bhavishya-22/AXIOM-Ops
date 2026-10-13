@@ -57,7 +57,7 @@ export const CAUSES: Record<string, CauseDefinition> = {
       { signal: 'checkout_5xx',    mechanism: [], maxLagMs: 90000 },
     ],
     excludedBy: { signal: 'redis_health_ok', probes: 3, minSpanMs: 30000 }, // must overlap this cause's own signal range
-    compatibleAction: 'restart_redis', targetService: 'redis-cache', risk: 'low', executable: false,
+    compatibleAction: 'restart_redis', targetService: 'redis-cache', risk: 'low', executable: true,
   },
   db_pool_exhausted: {
     diagnosticSignals: ['db_pool_exhausted'],
@@ -72,7 +72,7 @@ export const CAUSES: Record<string, CauseDefinition> = {
       { signal: 'checkout_5xx',    mechanism: [], maxLagMs: 90000 },
     ],
     excludedBy: null,
-    compatibleAction: 'increase_db_pool', targetService: 'orders-db', risk: 'medium', executable: false,
+    compatibleAction: 'increase_db_pool', targetService: 'orders-db', risk: 'medium', executable: true,
   },
   payment_gateway_down: {
     diagnosticSignals: ['gateway_unreachable'],
@@ -87,7 +87,7 @@ export const CAUSES: Record<string, CauseDefinition> = {
       { signal: 'checkout_5xx',    mechanism: [], maxLagMs: 90000 },
     ],
     excludedBy: null,
-    compatibleAction: 'failover_gateway', targetService: 'payment-gateway', risk: 'medium', executable: false,
+    compatibleAction: 'failover_gateway', targetService: 'payment-gateway', risk: 'medium', executable: true,
   },
   idp_down: {
     diagnosticSignals: ['idp_unreachable'],
@@ -103,7 +103,7 @@ export const CAUSES: Record<string, CauseDefinition> = {
       { signal: 'checkout_5xx',        mechanism: [], maxLagMs: 90000 },
     ],
     excludedBy: null,
-    compatibleAction: 'failover_idp', targetService: 'identity-provider', risk: 'medium', executable: false,
+    compatibleAction: 'failover_idp', targetService: 'identity-provider', risk: 'medium', executable: true,
   },
   bad_deploy: {
     diagnosticSignals: ['version_changed'],
@@ -122,7 +122,7 @@ export const CAUSES: Record<string, CauseDefinition> = {
       { signal: 'checkout_5xx',           mechanism: [], maxLagMs: 90000 },
     ],
     excludedBy: null,
-    compatibleAction: 'rollback_deploy', targetService: 'payments', risk: 'medium', executable: false,
+    compatibleAction: 'rollback_deploy', targetService: 'payments', risk: 'medium', executable: true,
   },
 };
 // executable flips to true per cause only after that scenario is remediation-supported.
