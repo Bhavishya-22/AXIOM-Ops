@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import { pollAllServicesMetrics } from '../metric-poller.js';
+import { incidentDetector } from '../detector.js';
+import { prisma } from '../prisma.js';
 
 export const scenariosRouter = Router();
 
@@ -23,6 +26,18 @@ scenariosRouter.post('/:name/trigger', async (req, res) => {
       return res.status(response.status).json(data);
     }
 
+    // Accelerate live detection cycles for responsive interactive demo
+    setTimeout(async () => {
+      try {
+        await pollAllServicesMetrics();
+        await incidentDetector.evaluateOnce(data.sessionId);
+        setTimeout(async () => {
+          await pollAllServicesMetrics();
+          await incidentDetector.evaluateOnce(data.sessionId);
+        }, 1200);
+      } catch {}
+    }, 600);
+
     return res.status(200).json(data);
   } catch (err: any) {
     return res.status(502).json({
@@ -46,6 +61,13 @@ scenariosRouter.post('/control/reset', async (_req, res) => {
     });
 
     const data = await response.json();
+
+    // Clear open incident slot on reset so system returns to clean nominal baseline
+    await prisma.incident.updateMany({
+      where: { openSlot: 1 },
+      data: { openSlot: null, status: 'resolved', resolvedAt: new Date() },
+    }).catch(() => {});
+
     return res.status(response.status).json(data);
   } catch (err: any) {
     return res.status(502).json({

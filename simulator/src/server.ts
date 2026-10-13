@@ -57,12 +57,13 @@ export function createSimulatorApp() {
   });
 
   // 3. POST /control/trigger/:scenario
-  app.post('/control/trigger/:scenario', requireControlToken, (req: Request, res: Response) => {
+  app.post('/control/trigger/:scenario', requireControlToken, async (req: Request, res: Response) => {
     const scenario = String(req.params.scenario);
     const skipBaselineCheck = req.query.skipBaselineCheck === 'true' || req.body?.skipBaselineCheck === true;
 
     try {
       const result = scenarioEngine.trigger(scenario, skipBaselineCheck);
+      await trafficSimulator.flushLogsToBackend().catch(() => {});
       res.status(200).json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
