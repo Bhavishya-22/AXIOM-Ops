@@ -92,8 +92,10 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
 
     const guardResult = assertExecutionAllowed(ctx);
     expect(guardResult.allowed).toBe(false);
-    expect(guardResult.disposition).toBe('manual_recommended');
-    expect(guardResult.reason).toBe('regulated_service_requires_change_control');
+    if (!guardResult.allowed) {
+      expect(guardResult.disposition).toBe('manual_recommended');
+      expect(guardResult.reason).toBe('regulated_service_requires_change_control');
+    }
   });
 
   it('Regulatory guard: holds L1 reset_user_session when effective impact touches regulated service', async () => {
@@ -121,8 +123,10 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
 
     const guardResult = assertExecutionAllowed(ctx);
     expect(guardResult.allowed).toBe(false);
-    expect(guardResult.disposition).toBe('manual_recommended');
-    expect(guardResult.reason).toBe('regulated_service_requires_change_control');
+    if (!guardResult.allowed) {
+      expect(guardResult.disposition).toBe('manual_recommended');
+      expect(guardResult.reason).toBe('regulated_service_requires_change_control');
+    }
   });
 
   it('Regulatory guard: checkout-only IdP fault executes normally when no regulated service is affected', async () => {
@@ -151,9 +155,10 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
 
-    // Remove batch-record-service from impact for standard checkout IdP fault
-    const impact = effectiveImpactServices(ctx).filter((s) => s !== 'batch-record-service');
+    const impact = effectiveImpactServices(ctx);
     expect(impact.includes('batch-record-service')).toBe(false);
+    const guardResult = assertExecutionAllowed(ctx);
+    expect(guardResult.allowed).toBe(true);
   });
 
   it('Execution boundary: refuses direct call when investigation is outdated (not latest)', async () => {
@@ -182,10 +187,14 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
 
-    expect(ctx.latestEligibleInvestigationId).toBe(newerInvestigation.id);
+    if (ctx.kind === 'L2') {
+      expect(ctx.latestEligibleInvestigationId).toBe(newerInvestigation.id);
+    }
     const result = assertExecutionAllowed(ctx);
     expect(result.allowed).toBe(false);
-    expect(result.reason).toBe('outdated_investigation');
+    if (!result.allowed) {
+      expect(result.reason).toBe('outdated_investigation');
+    }
   });
 
   it('Execution boundary: refuses Weak level, evidence gaps, material clusters, and closed incidents', async () => {
@@ -197,8 +206,11 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       action: 'restart_redis',
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
-    weakCtx.evidenceLevel = 'Weak';
-    expect(assertExecutionAllowed(weakCtx).reason).toBe('weak_evidence_level');
+    if (weakCtx.kind === 'L2') {
+      weakCtx.evidenceLevel = 'Weak';
+    }
+    const weakRes = assertExecutionAllowed(weakCtx);
+    expect(!weakRes.allowed && weakRes.reason).toBe('weak_evidence_level');
 
     // 2. Evidence gap
     const gapCtx = await buildExecutionContext({
@@ -208,8 +220,11 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       action: 'restart_redis',
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
-    gapCtx.evidenceComplete = false;
-    expect(assertExecutionAllowed(gapCtx).reason).toBe('evidence_gap');
+    if (gapCtx.kind === 'L2') {
+      gapCtx.evidenceComplete = false;
+    }
+    const gapRes = assertExecutionAllowed(gapCtx);
+    expect(!gapRes.allowed && gapRes.reason).toBe('evidence_gap');
 
     // 3. Material cluster
     const clusterCtx = await buildExecutionContext({
@@ -219,10 +234,20 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       action: 'restart_redis',
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
-    clusterCtx.unresolvedClusters = [
-      { service: 'payments', count: 5, sampleMessage: 'error', material: true },
-    ];
-    expect(assertExecutionAllowed(clusterCtx).reason).toBe('material_unresolved_cluster');
+    if (clusterCtx.kind === 'L2') {
+      clusterCtx.unresolvedClusters = [
+        {
+          service: 'payments',
+          messageHash: 'hash-err-1',
+          count: 5,
+          firstSeen: new Date(),
+          lastSeen: new Date(),
+          material: true,
+        },
+      ];
+    }
+    const clusterRes = assertExecutionAllowed(clusterCtx);
+    expect(!clusterRes.allowed && clusterRes.reason).toBe('material_unresolved_cluster');
 
     // 4. Closed incident
     const closedCtx = await buildExecutionContext({
@@ -232,8 +257,11 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       action: 'restart_redis',
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
-    closedCtx.incident.status = 'resolved';
-    expect(assertExecutionAllowed(closedCtx).reason).toBe('incident_closed');
+    if (closedCtx.kind === 'L2') {
+      closedCtx.incident.status = 'resolved';
+    }
+    const closedRes = assertExecutionAllowed(closedCtx);
+    expect(!closedRes.allowed && closedRes.reason).toBe('incident_closed');
 
     // 5. Incompatible action
     const incompCtx = await buildExecutionContext({
@@ -243,7 +271,8 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       action: 'failover_gateway' as any, // Incompatible with redis_unavailable
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
-    expect(assertExecutionAllowed(incompCtx).reason).toBe('action_incompatible_with_cause');
+    const incompRes = assertExecutionAllowed(incompCtx);
+    expect(!incompRes.allowed && incompRes.reason).toBe('action_incompatible_with_cause');
   });
 
   it('Execution boundary: L1 refuses missing, wrong-user, or already-consumed identity proof', async () => {
@@ -254,7 +283,8 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       action: 'reset_user_session',
       identityProof: null,
     });
-    expect(assertExecutionAllowed(missingCtx).reason).toBe('missing_identity_proof');
+    const missingRes = assertExecutionAllowed(missingCtx);
+    expect(!missingRes.allowed && missingRes.reason).toBe('missing_identity_proof');
 
     // 2. Wrong user
     const wrongUserCtx = await buildExecutionContext({
@@ -268,7 +298,8 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
         consumedAt: null,
       },
     });
-    expect(assertExecutionAllowed(wrongUserCtx).reason).toBe('identity_proof_user_mismatch');
+    const wrongRes = assertExecutionAllowed(wrongUserCtx);
+    expect(!wrongRes.allowed && wrongRes.reason).toBe('identity_proof_user_mismatch');
 
     // 3. Already consumed proof
     const consumedCtx = await buildExecutionContext({
@@ -282,7 +313,8 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
         consumedAt: new Date(Date.now() - 1000), // Consumed
       },
     });
-    expect(assertExecutionAllowed(consumedCtx).reason).toBe('identity_proof_already_consumed');
+    const consumedRes = assertExecutionAllowed(consumedCtx);
+    expect(!consumedRes.allowed && consumedRes.reason).toBe('identity_proof_already_consumed');
   });
 
   it('Roles: approverRole is derived strictly from stored DemoUser row; caller role is ignored', async () => {
@@ -300,7 +332,9 @@ describe('Shared Execution Guard & Policy Boundary (Section 20 & Section 6)', ()
       approval: { demoUserId: auth!.id, role: auth!.role, at: new Date() },
     });
 
-    expect(ctx.approval?.role).toBe('operator');
+    if (ctx.kind === 'L2') {
+      expect(ctx.approval?.role).toBe('operator');
+    }
     const result = assertExecutionAllowed(ctx);
     expect(result.allowed).toBe(true);
   });

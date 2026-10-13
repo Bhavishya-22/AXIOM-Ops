@@ -119,8 +119,9 @@ export function classifyEarly(
   }
 
   // Row 6: Only benign signals (declines, invalid tokens), no technical error rows
-  const onlyBenign = Object.values(sig).every((s) => s.kind === 'benign' || s.kind === 'health');
-  if (onlyBenign && !hasTechnicalErrors) {
+  const hasBenign = Object.values(sig).some((s) => s.kind === 'benign');
+  const onlyBenignOrHealth = Object.values(sig).every((s) => s.kind === 'benign' || s.kind === 'health');
+  if (hasBenign && onlyBenignOrHealth && !hasTechnicalErrors) {
     return {
       classification: 'not_an_incident',
       status: 'not_an_incident',
@@ -128,6 +129,19 @@ export function classifyEarly(
       reason: 'benign_business_outcomes_only',
       suppressed: [],
       unresolvedClusters: [],
+    };
+  }
+
+  // Row 7: Health and warnings only (no diagnostic, no benign) on an incident ticket
+  const onlyHealth = Object.values(sig).every((s) => s.kind === 'health');
+  if (onlyHealth && !hasTechnicalErrors) {
+    return {
+      classification: 'incident',
+      status: 'insufficient_evidence',
+      reason: 'health_and_warnings_only',
+      suppressed: [],
+      unresolvedClusters: [],
+      missingEvidence: ['diagnostic_signal_required'],
     };
   }
 

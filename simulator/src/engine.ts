@@ -130,7 +130,9 @@ export class ScenarioEngine {
 
       // Schedule recovery
       const fixConfig = this.activeScenario?.fix;
-      const recoversAfterMs = fixConfig?.recoversAfterMs ?? 8000;
+      const recoversAfterMs = process.env.RECOVERY_DELAY_MS
+        ? parseInt(process.env.RECOVERY_DELAY_MS, 10)
+        : (fixConfig?.recoversAfterMs ?? 8000);
 
       setTimeout(() => {
         this.faultActive = false;

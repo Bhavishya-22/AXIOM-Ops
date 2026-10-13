@@ -4,6 +4,7 @@ import { authenticateDemoToken } from '../auth/demo-auth.js';
 import { buildExecutionContext, assertExecutionAllowed } from '../policy/execution-guard.js';
 import { executeRemediation } from '../remediation/executor.js';
 import { CAUSES } from '../registry/causes.js';
+import { ActionId } from '@axiomops/shared';
 
 export const remediationsRouter = Router();
 
@@ -64,6 +65,10 @@ export async function handleApproveInvestigation(
 
     const incidentId = investigation.ticket?.incidentId;
 
+    const rootCause = investigation.rootCauses?.[0];
+    const causeDef = rootCause ? CAUSES[rootCause] : undefined;
+    const actionId = (causeDef?.compatibleAction || '') as ActionId;
+
     // 2. Build execution context from stored rows only
     const ctx = await buildExecutionContext({
       kind: 'L2',
@@ -71,6 +76,7 @@ export async function handleApproveInvestigation(
         investigationId,
         demoUserId: user.id,
       },
+      action: actionId,
     });
 
     // 3. Evaluate shared execution guard
@@ -98,9 +104,6 @@ export async function handleApproveInvestigation(
 
       // Special handling for regulated hold (Section 14 & Item 7)
       if (guardResult.reason === 'regulated_service_requires_change_control') {
-        const rootCause = investigation.rootCauses[0];
-        const causeDef = CAUSES[rootCause];
-
         await prisma.investigation.update({
           where: { id: investigationId },
           data: {
@@ -145,9 +148,6 @@ export async function handleApproveInvestigation(
     }
 
     // 4. Guard passed: prepare idempotency and action
-    const rootCause = investigation.rootCauses[0];
-    const causeDef = CAUSES[rootCause];
-    const actionId = causeDef.compatibleAction;
     const idempotencyKey =
       (req.body?.idempotencyKey as string) || `${investigationId}-${actionId}`;
 

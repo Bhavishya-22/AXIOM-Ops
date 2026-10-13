@@ -158,6 +158,7 @@ export async function buildExecutionContext(input: BuildExecutionContextInput): 
       regulatedHold: investigation.regulatedHold,
       evidenceComplete: investigation.evidenceComplete,
       evidenceLevel: investigation.evidenceLevel as EvidenceLevel | null,
+      effectiveImpact: (investigation.effectiveImpactJson as string[]) || [],
     },
     latestEligibleInvestigationId: latestDiagnosed?.id || '',
     evidenceLevel: investigation.evidenceLevel as EvidenceLevel | null,
@@ -168,7 +169,7 @@ export async function buildExecutionContext(input: BuildExecutionContextInput): 
 }
 
 /**
- * Computes evidence-derived effectiveImpactServices:
+ * Computes evidence-derived effectiveImpactServices per Section 6:
  * - ticket.services
  * - incident-scoped services showing technical error rows in the evidence pack
  * - action's target service
@@ -178,17 +179,20 @@ export function effectiveImpactServices(ctx: ExecutionContext): string[] {
   const impact = new Set<string>(ctx.ticket.services);
 
   if (ctx.kind === 'L2') {
+    if (ctx.investigation.effectiveImpact && ctx.investigation.effectiveImpact.length > 0) {
+      for (const s of ctx.investigation.effectiveImpact) {
+        impact.add(s);
+      }
+    }
+
+    if (ctx.investigation.regulatedHold) {
+      impact.add('batch-record-service');
+    }
+
     const rootCause = ctx.investigation.rootCauses[0];
     const causeDef = CAUSES[rootCause];
-    if (causeDef) {
-      if (causeDef.targetService) {
-        impact.add(causeDef.targetService);
-      }
-      if (causeDef.symptomSignatures) {
-        for (const sig of causeDef.symptomSignatures) {
-          impact.add(sig.service);
-        }
-      }
+    if (causeDef?.targetService) {
+      impact.add(causeDef.targetService);
     }
 
     // Add any service in unresolvedClusters
@@ -232,14 +236,22 @@ export function assertExecutionAllowed(ctx: ExecutionContext): GuardResult {
   if (ctx.kind === 'L2') {
     const { action, ticket, incident, investigation, latestEligibleInvestigationId, approval } = ctx;
 
-    if (!ALLOWLIST.includes(action)) {
-      return { allowed: false, disposition: 'refused', reason: 'action_not_allowlisted' };
+    if (investigation.status !== 'done' || investigation.diagnosisStatus !== 'diagnosed') {
+      return { allowed: false, disposition: 'refused', reason: 'investigation_not_diagnosed' };
     }
 
     const rootCause = investigation.rootCauses[0];
+    if (!rootCause) {
+      return { allowed: false, disposition: 'refused', reason: 'investigation_missing_root_cause' };
+    }
+
     const causeDef = CAUSES[rootCause];
     if (!causeDef) {
       return { allowed: false, disposition: 'refused', reason: 'unknown_root_cause' };
+    }
+
+    if (!ALLOWLIST.includes(action)) {
+      return { allowed: false, disposition: 'refused', reason: 'action_not_allowlisted' };
     }
 
     if (causeDef.compatibleAction !== action) {
@@ -248,10 +260,6 @@ export function assertExecutionAllowed(ctx: ExecutionContext): GuardResult {
 
     if (!causeDef.executable) {
       return { allowed: false, disposition: 'refused', reason: 'action_not_supported_executable' };
-    }
-
-    if (investigation.diagnosisStatus !== 'diagnosed') {
-      return { allowed: false, disposition: 'refused', reason: 'investigation_not_diagnosed' };
     }
 
     if (investigation.causeMode !== 'single') {

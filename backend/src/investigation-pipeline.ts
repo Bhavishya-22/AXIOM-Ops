@@ -11,6 +11,7 @@ import {
 } from './diagnosis.js';
 import { retrieveTopHistoricalCases } from './history.js';
 import { SERVICES } from '@axiomops/shared';
+import { CAUSES } from './registry/causes.js';
 import { buildEscalationPacket } from './l1/escalation.js';
 
 /**
@@ -34,7 +35,11 @@ export async function runInvestigationPipeline(investigationId: string): Promise
 
   const { ticket } = investigation;
   const incident = ticket.incident;
-  const sessionId = incident?.sessionId || 'default_session';
+  let sessionId = incident?.sessionId;
+  if (!sessionId) {
+    const latestLog = await prisma.log.findFirst({ orderBy: { ts: 'desc' } });
+    sessionId = latestLog?.sessionId || 'default_session';
+  }
   const detectedAt = incident?.detectedAt || investigation.investigationStartedAt;
   const investigationStartedAt = investigation.investigationStartedAt;
   const scopedServices = traverseServiceScope(ticket.services);
@@ -165,9 +170,23 @@ export async function runInvestigationPipeline(investigationId: string): Promise
     }
 
     // 6. Execution Guard & Regulatory Hold Checks
-    // Check if any error row in the pack affects a regulated service (e.g. batch-record-service)
-    const hasRegulatedError = pack.nodes.some(
-      (n) => SERVICES[n.service]?.regulated && (n.level === 'ERROR' || n.level === 'WARN')
+    // Compute evidence-derived effectiveImpact per Section 6:
+    // ticket.services ∪ services showing errors in pack ∪ action's target service
+    const errorServices = new Set<string>(ticket.services);
+    for (const node of pack.nodes) {
+      if (node.level === 'ERROR' || node.signalKind === 'diagnostic' || node.signalKind === 'supporting') {
+        errorServices.add(node.service);
+      }
+    }
+    const chosenCause = diag.rootCauses[0];
+    const causeDef = chosenCause ? CAUSES[chosenCause] : undefined;
+    if (causeDef?.targetService) {
+      errorServices.add(causeDef.targetService);
+    }
+    const effectiveImpact = Array.from(errorServices);
+
+    const hasRegulatedError = effectiveImpact.some(
+      (s) => SERVICES[s]?.regulated
     );
     const regulatedHold = hasRegulatedError;
 
@@ -192,7 +211,9 @@ export async function runInvestigationPipeline(investigationId: string): Promise
     // Unlinked tickets are manual-only
     if (!incident) {
       diag.actionDisposition = 'manual_recommended';
-      diag.dispositionReason = 'unscoped_evidence_unlinked_ticket';
+      if (!diag.dispositionReason) {
+        diag.dispositionReason = 'unscoped_evidence_unlinked_ticket';
+      }
     }
 
     // 7. Persist Investigation Outcome
@@ -209,7 +230,7 @@ export async function runInvestigationPipeline(investigationId: string): Promise
         rootCauses: diag.rootCauses,
         suppressedJson: scorerResult.suppressed as any,
         unresolvedClustersJson: scorerResult.unresolvedClusters as any,
-        effectiveImpactJson: pack.scopedServices as any,
+        effectiveImpactJson: effectiveImpact as any,
         regulatedHold,
         evidenceComplete: windowResult.isComplete,
         evidenceLevel: diag.evidenceLevel,
@@ -280,6 +301,26 @@ export async function runInvestigationPipeline(investigationId: string): Promise
         },
       },
     });
+
+    if (regulatedHold) {
+      await prisma.auditEvent.create({
+        data: {
+          incidentId: incident?.id,
+          ticketId: ticket.id,
+          investigationId: investigation.id,
+          actor: 'system',
+          type: 'change_control_required',
+          evidenceLogIds: diag.evidenceLogIds,
+          payloadJson: {
+            diagnosis: diag.rootCauses,
+            impactServices: effectiveImpact,
+            recommendedAction: causeDef?.compatibleAction,
+            owningTeam: 'identity-and-access',
+            regulatedHold: true,
+          },
+        },
+      });
+    }
 
     return diag;
   } catch (err: any) {

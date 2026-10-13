@@ -425,19 +425,19 @@ export const SCENARIOS: Record<string, ScenarioDefinition> = {
         variants: ['deployed v2.4.1', 'version changed to v2.4.1'],
       },
       {
-        at: 20000,
+        at: 400,
         service: 'payments',
         level: 'INFO',
         variants: ['post-deploy check ok'],
       },
       {
-        at: 40000,
+        at: 800,
         service: 'payments',
         level: 'INFO',
         variants: ['post-deploy check ok'],
       },
       {
-        at: 60000,
+        at: 1200,
         service: 'payments',
         level: 'INFO',
         variants: ['post-deploy check ok'],
@@ -575,7 +575,13 @@ export const SCENARIOS: Record<string, ScenarioDefinition> = {
         variants: ['connection refused to cache node:6379'],
       },
       {
-        at: 1000,
+        at: 400,
+        service: 'payments',
+        level: 'ERROR',
+        variants: ['unexplained memory corruption on payments processor'],
+      },
+      {
+        at: 800,
         service: 'payments',
         level: 'ERROR',
         variants: ['unexplained memory corruption on payments processor'],
@@ -587,13 +593,7 @@ export const SCENARIOS: Record<string, ScenarioDefinition> = {
         variants: ['unexplained memory corruption on payments processor'],
       },
       {
-        at: 1400,
-        service: 'payments',
-        level: 'ERROR',
-        variants: ['unexplained memory corruption on payments processor'],
-      },
-      {
-        at: 3000,
+        at: 2000,
         service: 'checkout',
         level: 'ERROR',
         variants: ['request failed with status 503'],

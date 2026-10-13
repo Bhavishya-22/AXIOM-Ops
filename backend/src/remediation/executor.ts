@@ -45,7 +45,7 @@ export async function executeRemediation(
 
   const guardResult = assertExecutionAllowed(ctx);
   if (!guardResult.allowed) {
-    await prisma.remediationRun.update({
+    const updated = await prisma.remediationRun.update({
       where: { id: run.id },
       data: {
         status: 'refused',
@@ -69,7 +69,7 @@ export async function executeRemediation(
       },
     });
 
-    throw new Error(`Execution disallowed by guard: ${guardResult.reason}`);
+    return updated;
   }
 
   // 2. Persist state: apply_sent before calling the simulator
@@ -159,7 +159,9 @@ export async function executeRemediation(
   // 6. Polling verification loop: poll every 3 s up to 30 s
   let finalOutcome: VerificationOutcome | null = null;
   const maxPolls = 10;
-  const pollIntervalMs = 3000;
+  const pollIntervalMs = process.env.POLL_INTERVAL_MS
+    ? parseInt(process.env.POLL_INTERVAL_MS, 10)
+    : 3000;
 
   for (let poll = 0; poll < maxPolls; poll++) {
     // Wait interval

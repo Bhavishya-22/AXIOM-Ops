@@ -11,5 +11,5 @@
       "@axiomops/shared": ["./shared/src/index.ts"]
     }
   },
-  "include": ["shared/**/*", "backend/**/*", "simulator/**/*", "tests/**/*"]
+  "include": ["shared/**/*", "backend/**/*", "simulator/**/*", "tests/**/*", "scripts/**/*"]
 }

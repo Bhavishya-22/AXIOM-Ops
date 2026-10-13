@@ -41,6 +41,10 @@ export class TrafficSimulator {
     this.initMetrics();
   }
 
+  public setIngestUrl(url: string): void {
+    this.ingestUrl = url;
+  }
+
   public initMetrics(): void {
     for (const service of Object.keys(SERVICES)) {
       this.metrics.set(service, {

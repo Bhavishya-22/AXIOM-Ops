@@ -68,6 +68,7 @@ export interface InvestigationContext {
   regulatedHold?: boolean;
   evidenceComplete: boolean;
   evidenceLevel?: EvidenceLevel | null;
+  effectiveImpact?: string[];
 }
 
 export interface ApprovalRecord {

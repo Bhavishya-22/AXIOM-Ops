@@ -379,7 +379,9 @@ describe('ACCEPTANCE SUITE: PHASE 3 (Section 20 & Item 13)', () => {
       action: 'restart_redis',
       approval: { demoUserId: 'operator-1', role: 'operator', at: new Date() },
     });
-    weakCtx.evidenceLevel = 'Weak';
+    if (weakCtx.kind === 'L2') {
+      weakCtx.evidenceLevel = 'Weak';
+    }
     expect(assertExecutionAllowed(weakCtx).allowed).toBe(false);
 
     // 2. Incompatible
@@ -433,7 +435,9 @@ describe('ACCEPTANCE SUITE: PHASE 3 (Section 20 & Item 13)', () => {
 
     const guardResult = assertExecutionAllowed(ctx);
     expect(guardResult.allowed).toBe(false);
-    expect(guardResult.disposition).toBe('manual_recommended');
-    expect(guardResult.reason).toBe('regulated_service_requires_change_control');
+    if (!guardResult.allowed) {
+      expect(guardResult.disposition).toBe('manual_recommended');
+      expect(guardResult.reason).toBe('regulated_service_requires_change_control');
+    }
   });
 });
